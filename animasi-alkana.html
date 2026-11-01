@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Animasi Struktur Alkana</title>
+<style>
+:root{--bg:#f3f5fa;--card:#fff;--tx:#14213d;--mut:#55627f;--ac:#1f5fd6;--acx:#fff;--bd:#dfe5f1;--chip:#eaf0fb}
+@media(prefers-color-scheme:dark){:root{--bg:#0d1322;--card:#151d33;--tx:#e8edf8;--mut:#9aa7c4;--ac:#6ea0ff;--acx:#0d1322;--bd:#26304d;--chip:#1d2741}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--tx);font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;padding:14px;line-height:1.5}
+.wrap{max-width:880px;margin:0 auto}
+h1{font-size:1.2rem;margin:0 0 2px}
+.sub{color:var(--mut);font-size:.9rem;margin:0 0 12px}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:14px;overflow:hidden}
+.stage{position:relative;height:340px;background:radial-gradient(ellipse at 50% 30%,#24345f 0,#0f1730 72%);touch-action:none}
+canvas{width:100%;height:100%;display:block;cursor:grab}
+canvas:active{cursor:grabbing}
+.badge{position:absolute;left:14px;top:12px;color:#fff;pointer-events:none}
+.badge b{font-size:1.45rem;display:block;line-height:1.15}
+.badge span{font-size:.95rem;color:#c9d6f3}
+.legend{position:absolute;right:12px;top:12px;display:flex;gap:12px;color:#cdd7ee;font-size:.8rem;pointer-events:none}
+.dot{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:5px}
+.ctl{padding:12px 14px;display:grid;gap:10px}
+.row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.chips{display:flex;gap:6px;overflow-x:auto;padding-bottom:4px;scrollbar-width:thin}
+button{font:inherit;font-size:.88rem;color:var(--tx);background:var(--chip);border:1px solid transparent;border-radius:999px;padding:7px 13px;cursor:pointer;white-space:nowrap}
+button:hover{border-color:var(--ac)}
+button:focus-visible,input:focus-visible{outline:3px solid var(--ac);outline-offset:2px}
+button[aria-pressed="true"]{background:var(--ac);color:var(--acx);font-weight:600}
+.seg{display:flex;gap:4px}
+label.tg{display:flex;gap:6px;align-items:center;font-size:.88rem;color:var(--mut);cursor:pointer}
+.info{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:1px;background:var(--bd);border-top:1px solid var(--bd)}
+.info div{background:var(--card);padding:10px 14px}
+.info small{display:block;color:var(--mut);font-size:.78rem}
+.info strong{font-size:1.02rem;font-weight:650;overflow-wrap:anywhere}
+.note{margin:0;padding:12px 14px;border-top:1px solid var(--bd);color:var(--mut);font-size:.88rem}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Struktur alkana</h1>
+  <p class="sub">Pilih jumlah atom C, lalu geser model untuk melihatnya dari sudut lain.</p>
+  <div class="card">
+    <div class="stage" id="stage">
+      <canvas id="cv" aria-label="Model molekul alkana"></canvas>
+      <div class="badge"><b id="nm"></b><span id="mf"></span></div>
+      <div class="legend"><span><i class="dot" style="background:#5b6788"></i>Karbon (C)</span><span><i class="dot" style="background:#f2f5fc"></i>Hidrogen (H)</span></div>
+    </div>
+    <div class="ctl">
+      <div class="chips" id="chips" role="group" aria-label="Pilih alkana"></div>
+      <div class="row">
+        <div class="seg" role="group" aria-label="Mode tampilan">
+          <button id="b2" aria-pressed="true">Rumus struktur</button>
+          <button id="b3" aria-pressed="false">Model 3D</button>
+        </div>
+        <button id="rp">Putar ulang animasi</button>
+        <label class="tg"><input type="checkbox" id="auto"> Putar otomatis</label>
+      </div>
+    </div>
+    <div class="info">
+      <div><small>Rumus molekul</small><strong id="i1"></strong></div>
+      <div><small>Rumus kondensasi</small><strong id="i2"></strong></div>
+      <div><small>Massa molekul relatif (Mr)</small><strong id="i3"></strong></div>
+      <div><small>Ikatan C–H / C–C</small><strong id="i4"></strong></div>
+      <div><small>Titik didih</small><strong id="i5"></strong></div>
+      <div><small>Wujud (suhu kamar)</small><strong id="i6"></strong></div>
+    </div>
+    <p class="note" id="note"></p>
+  </div>
+</div>
+
+<script>
+(function(){
+var NAMES=["Metana","Etana","Propana","Butana","Pentana","Heksana","Heptana","Oktana","Nonana","Dekana"];
+var BP=["−161,5","−88,6","−42,1","−0,5","36,1","68,7","98,4","125,7","150,8","174,1"];
+var $=function(i){return document.getElementById(i)};
+var cv=$("cv"),ctx=cv.getContext("2d"),stage=$("stage");
+var n=3,atoms=[],bonds=[],T=0,m=0,mode3=false,yaw=0.6,pitch=0.35,drag=false,W=0,H=0,dpr=1,last=0;
+var reduce=window.matchMedia&&matchMedia("(prefers-reduced-motion: reduce)").matches;
+$("auto").checked=!reduce;
+
+var SX=1.6,HX=1.25,AX=1.257,ZZ=0.445,HY=0.89,HO=0.63,CH=1.09,K=CH/1.54;
+
+function build(){
+  atoms=[];bonds=[];
+  function add(el,p2,p3,t){atoms.push({el:el,p2:p2,p3:p3,t:t});return atoms.length-1}
+  if(n===1){
+    var c=add("C",[0,0,0],[0,0,0],0),d=CH/Math.sqrt(3);
+    [[1,1,1,HX,0],[1,-1,-1,0,HX],[-1,1,-1,-HX,0],[-1,-1,1,0,-HX]].forEach(function(v,k){
+      var h=add("H",[v[3],v[4],0],[v[0]*d,v[1]*d,v[2]*d],0.3+k*0.1);bonds.push([c,h]);
+    });
+  }else{
+    var cs=[],i;
+    for(i=0;i<n;i++){
+      var o=i-(n-1)/2;
+      cs.push(add("C",[o*SX,0,0],[o*AX,0,(i%2?ZZ:-ZZ)],i*0.13));
+    }
+    for(i=0;i<n-1;i++)bonds.push([cs[i],cs[i+1]]);
+    for(i=0;i<n;i++){
+      var o2=i-(n-1)/2,s=i%2?1:-1,cz=s*ZZ,b=0.3+i*0.13;
+      [1,-1].forEach(function(sy,k){
+        var h=add("H",[o2*SX,sy*HX,0],[o2*AX,sy*HY,cz+s*HO],b+k*0.05);bonds.push([cs[i],h]);
+      });
+      if(i===0||i===n-1){
+        var dir=i===0?-1:1;
+        var h2=add("H",[o2*SX+dir*HX,0,0],[o2*AX+dir*AX*K,0,cz-2*s*ZZ*K],b+0.1);bonds.push([cs[i],h2]);
+      }
+    }
+  }
+}
+
+function sub(x){return "<sub>"+x+"</sub>"}
+function info(){
+  $("nm").textContent=NAMES[n-1];
+  var mf=n===1?"CH"+sub(4):"C"+sub(n)+"H"+sub(2*n+2);
+  $("mf").innerHTML=mf;
+  $("i1").innerHTML=mf;
+  var cd;
+  if(n===1)cd="CH"+sub(4);
+  else if(n<=4){var p=["CH"+sub(3)];for(var k=0;k<n-2;k++)p.push("CH"+sub(2));p.push("CH"+sub(3));cd=p.join("–")}
+  else cd="CH"+sub(3)+"–(CH"+sub(2)+")"+sub(n-2)+"–CH"+sub(3);
+  $("i2").innerHTML=cd;
+  $("i3").textContent=14*n+2;
+  $("i4").textContent=(2*n+2)+" / "+(n-1);
+  $("i5").textContent=BP[n-1]+" °C";
+  $("i6").textContent=n<=4?"Gas":"Cair";
+  $("note").innerHTML=mode3
+    ?"Atom C berhibridisasi sp"+sub(3)+": setiap C mengikat 4 atom dengan sudut ±109,5°, sehingga rantainya berbentuk zig-zag."
+    :"Rumus struktur digambar datar. Semua ikatan tunggal, dan rumus umum alkana adalah C"+sub("n")+"H"+sub("2n+2")+". Buka Model 3D untuk melihat bentuk sebenarnya.";
+}
+
+function mkChips(){
+  var box=$("chips");
+  NAMES.forEach(function(nm,i){
+    var b=document.createElement("button");
+    b.textContent=nm;b.setAttribute("aria-pressed",i+1===n);
+    b.onclick=function(){n=i+1;build();T=0;info();[].forEach.call(box.children,function(c,j){c.setAttribute("aria-pressed",j===i)})};
+    box.appendChild(b);
+  });
+}
+
+function setMode(v){
+  mode3=v;$("b2").setAttribute("aria-pressed",!v);$("b3").setAttribute("aria-pressed",v);info();
+}
+$("b2").onclick=function(){setMode(false)};
+$("b3").onclick=function(){setMode(true)};
+$("rp").onclick=function(){T=0};
+
+function resize(){
+  dpr=Math.min(window.devicePixelRatio||1,2);
+  W=stage.clientWidth;H=stage.clientHeight;
+  cv.width=W*dpr;cv.height=H*dpr;
+}
+if(window.ResizeObserver)new ResizeObserver(resize).observe(stage);else addEventListener("resize",resize);
+
+var px=0,py=0;
+cv.addEventListener("pointerdown",function(e){if(!mode3)return;drag=true;px=e.clientX;py=e.clientY;cv.setPointerCapture(e.pointerId)});
+cv.addEventListener("pointermove",function(e){
+  if(!drag)return;
+  yaw+=(e.clientX-px)*0.01;pitch=Math.max(-1.2,Math.min(1.2,pitch+(e.clientY-py)*0.01));
+  px=e.clientX;py=e.clientY;
+});
+["pointerup","pointercancel"].forEach(function(t){cv.addEventListener(t,function(){drag=false})});
+
+function clamp(v){return v<0?0:v>1?1:v}
+function easeBack(r){if(r<=0)return 0;if(r>=1)return 1;var c=1.9;return 1+(c+1)*Math.pow(r-1,3)+c*Math.pow(r-1,2)}
+function easeOut(r){return 1-Math.pow(1-r,3)}
+function ease(r){return r*r*(3-2*r)}
+
+function scales(){
+  var ext2=(n===1?2*HX:(n-1)*SX+2*HX)+0.9;
+  var S2=Math.min((W-30)/ext2,(H-100)/(2*HX+0.9),62);
+  var rxz=0,ym=0;
+  atoms.forEach(function(a){rxz=Math.max(rxz,Math.hypot(a.p3[0],a.p3[2]));ym=Math.max(ym,Math.abs(a.p3[1]))});
+  var S3=Math.min((W-30)/(2*(rxz+0.45)),(H-70)/(2*(rxz*0.5+ym+0.5)),62);
+  return [S2,S3];
+}
+
+function draw(){
+  ctx.setTransform(dpr,0,0,dpr,0,0);ctx.clearRect(0,0,W,H);
+  var e=ease(m),sc=scales(),S=sc[0]+(sc[1]-sc[0])*e;
+  var cy=Math.cos(yaw),sy=Math.sin(yaw),cp=Math.cos(pitch),sp=Math.sin(pitch);
+  var cx0=W/2,cy0=H/2+22;
+  var P=atoms.map(function(a){
+    var x=a.p3[0],y=a.p3[1],z=a.p3[2];
+    var x1=x*cy+z*sy,z1=-x*sy+z*cy;
+    var y2=y*cp-z1*sp,z2=y*sp+z1*cp;
+    var X=a.p2[0]+(x1-a.p2[0])*e,Y=a.p2[1]+(y2-a.p2[1])*e,Z=z2*e;
+    var r=clamp((T-a.t)/0.4);
+    return {X:cx0+X*S,Y:cy0-Y*S,Z:Z,r:r,s:easeBack(r),el:a.el};
+  });
+  var items=[];
+  bonds.forEach(function(b){
+    var A=P[b[0]],B=P[b[1]];
+    var pr=easeOut(Math.min(A.r,B.r));
+    if(pr<=0)return;
+    items.push({z:(A.Z+B.Z)/2,bond:[A,B,pr]});
+  });
+  P.forEach(function(p){if(p.s>0)items.push({z:p.Z,atom:p})});
+  items.sort(function(a,b){return a.z-b.z});
+  items.forEach(function(it){
+    if(it.bond){
+      var A=it.bond[0],B=it.bond[1],pr=it.bond[2];
+      var dz=1+(A.Z+B.Z)/2*0.035*e;
+      ctx.lineCap="round";
+      ctx.strokeStyle=e>0.5?"rgba(176,190,222,"+(0.75+0.1*clamp((A.Z+B.Z)/4))+")":"rgba(196,208,234,0.9)";
+      ctx.lineWidth=S*(0.085+0.05*e)*dz;
+      ctx.beginPath();ctx.moveTo(A.X,A.Y);ctx.lineTo(A.X+(B.X-A.X)*pr,A.Y+(B.Y-A.Y)*pr);ctx.stroke();
+    }else{
+      var p=it.atom,isC=p.el==="C";
+      var r=S*(isC?0.42:0.27)*p.s*(1+p.Z*0.035*e);
+      if(r<=0.5)return;
+      var g=ctx.createRadialGradient(p.X-r*0.35,p.Y-r*0.4,r*0.08,p.X,p.Y,r);
+      if(isC){g.addColorStop(0,"#9aa6c4");g.addColorStop(0.55,"#5b6788");g.addColorStop(1,"#2b3350")}
+      else{g.addColorStop(0,"#ffffff");g.addColorStop(0.6,"#e8eefb");g.addColorStop(1,"#a9b6d4")}
+      ctx.fillStyle=g;ctx.beginPath();ctx.arc(p.X,p.Y,r,0,6.2832);ctx.fill();
+      var ta=1-e;
+      if(ta>0.05&&r>6){
+        ctx.fillStyle=isC?"rgba(255,255,255,"+ta+")":"rgba(27,37,64,"+ta+")";
+        ctx.font="700 "+Math.round(r*1.05)+"px system-ui,sans-serif";
+        ctx.textAlign="center";ctx.textBaseline="middle";
+        ctx.fillText(p.el,p.X,p.Y+r*0.05);
+      }
+    }
+  });
+}
+
+function frame(ts){
+  var dt=Math.min(0.05,(ts-last)/1000||0);last=ts;
+  T+=dt;
+  m=clamp(m+(mode3?1:-1)*dt*1.5);
+  if($("auto").checked&&!drag&&m>0)yaw+=dt*0.55;
+  draw();
+  requestAnimationFrame(frame);
+}
+
+build();mkChips();info();resize();
+requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
